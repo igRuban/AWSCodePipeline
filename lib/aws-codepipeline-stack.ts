@@ -19,14 +19,14 @@ export class CodePipelineStack extends cdk.Stack {
         const buildProject = new codebuild.PipelineProject(this, 'BuildProject');
 
         // Define CodePipeline
-        const pipeline = new codepipeline.Pipeline(this, 'MyPipeline');
+        const pipeline = new codepipeline.Pipeline(this, 'MyFirstPipeline');
 
         // Source Stage (GitHub without Webhook)
         const sourceStage = pipeline.addStage({ stageName: 'Source' });
 
         // First Action: GitHub Source
         sourceStage.addAction(new codepipeline_actions.GitHubSourceAction({
-            actionName: 'GitHub_Source',
+            actionName: 'CheckOut',
             owner: 'igRuban', // Your GitHub username
             repo: 'AWSCodePipeline', // Your GitHub repo name
             branch: 'master',
@@ -37,7 +37,7 @@ export class CodePipelineStack extends cdk.Stack {
 
         // Second Action: Another GitHub Source (or any other source)
         sourceStage.addAction(new codepipeline_actions.GitHubSourceAction({
-            actionName: 'GitHub_Source_Secondary',
+            actionName: 'Compile',
             owner: 'anotherOwner', // Another GitHub username (or different repo)
             repo: 'AnotherRepo', // Another GitHub repo name
             branch: 'main',
