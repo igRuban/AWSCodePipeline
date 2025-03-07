@@ -2,71 +2,65 @@ import * as cdk from 'aws-cdk-lib';
 import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
-import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as iam from 'aws-cdk-lib/aws-iam';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 
 export class CodePipelineStack extends cdk.Stack {
     constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {
         super(scope, id, props);
 
-        // S3 Bucket for artifacts
-        const artifactBucket = new s3.Bucket(this, 'PipelineArtifactBucket');
+        // Fetch GitHub Token from AWS Secrets Manager
+        const githubToken = secretsmanager.Secret.fromSecretNameV2(this, 'GitHubToken', 'last-time');
 
-        // Source Artifact
+        // Define Artifacts
         const sourceArtifact = new codepipeline.Artifact();
         const buildArtifact = new codepipeline.Artifact();
 
         // CodeBuild Project
-        const buildProject = new codebuild.PipelineProject(this, 'BuildProject', {
-            buildSpec: codebuild.BuildSpec.fromObject({
-                version: '0.2',
-                phases: {
-                    install: {
-                        commands: ['npm install']
-                    },
-                    build: {
-                        commands: ['npm run build']
-                    }
-                },
-                artifacts: {
-                    'files': ['**/*']
-                }
-            }),
-        });
+        const buildProject = new codebuild.PipelineProject(this, 'BuildProject');
 
-        // IAM Role for CodePipeline
-        const pipelineRole = new iam.Role(this, 'PipelineRole', {
-            assumedBy: new iam.ServicePrincipal('codepipeline.amazonaws.com'),
-            managedPolicies: [
-                iam.ManagedPolicy.fromAwsManagedPolicyName('AdministratorAccess'),
-            ],
-        });
+        // Define CodePipeline
+        const pipeline = new codepipeline.Pipeline(this, 'MyPipeline');
 
-        // CodePipeline Definition
-        const pipeline = new codepipeline.Pipeline(this, 'MyPipeline', {
-            pipelineName: 'MyCodePipeline',
-            artifactBucket: artifactBucket,
-            role: pipelineRole
-        });
-
-        // Source Stage (GitHub)
+        // Source Stage (GitHub without Webhook)
         const sourceStage = pipeline.addStage({ stageName: 'Source' });
+
+        // First Action: GitHub Source
         sourceStage.addAction(new codepipeline_actions.GitHubSourceAction({
             actionName: 'GitHub_Source',
-            owner: 'your-github-username',
-            repo: 'your-repository',
-            branch: 'main',
-            oauthToken: cdk.SecretValue.secretsManager('github-token'),
+            owner: 'igRuban', // Your GitHub username
+            repo: 'AWSCodePipeline', // Your GitHub repo name
+            branch: 'master',
+            oauthToken: githubToken.secretValue, // Use GitHub token from Secrets Manager
             output: sourceArtifact,
+            trigger: codepipeline_actions.GitHubTrigger.NONE, // Disables Webhook
         }));
 
-        // Deploy Stage (CodeBuild)
-        const deployStage = pipeline.addStage({ stageName: 'Deploy' });
-        deployStage.addAction(new codepipeline_actions.CodeBuildAction({
+        // Second Action: Another GitHub Source (or any other source)
+        sourceStage.addAction(new codepipeline_actions.GitHubSourceAction({
+            actionName: 'GitHub_Source_Secondary',
+            owner: 'anotherOwner', // Another GitHub username (or different repo)
+            repo: 'AnotherRepo', // Another GitHub repo name
+            branch: 'main',
+            oauthToken: githubToken.secretValue, // Use GitHub token from Secrets Manager
+            output: new codepipeline.Artifact('secondarySourceArtifact'),
+            trigger: codepipeline_actions.GitHubTrigger.NONE, // Disables Webhook
+        }));
+
+        // Build Stage (CodeBuild)
+        const buildStage = pipeline.addStage({ stageName: 'Build' });
+        buildStage.addAction(new codepipeline_actions.CodeBuildAction({
             actionName: 'CodeBuild',
             project: buildProject,
             input: sourceArtifact,
             outputs: [buildArtifact],
+        }));
+
+        // Deploy Stage
+        const deployStage = pipeline.addStage({ stageName: 'Deploy' });
+        deployStage.addAction(new codepipeline_actions.CodeBuildAction({
+            actionName: 'CodeBuild_Deploy',
+            project: buildProject, // You can replace this with a separate CodeBuild project for deployment
+            input: buildArtifact,
         }));
     }
 }

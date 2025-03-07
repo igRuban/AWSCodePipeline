@@ -4,8 +4,8 @@ set -e  # Exit immediately if a command fails
 
 echo "🚀 Starting AWS CDK Deployment..."
 
-# Ensure script has execution permissions
-chmod +x "$0"
+# make the script executable every time it runs
+chmod +x "$0" 
 
 # Install dependencies
 echo "📦 Installing dependencies..."
