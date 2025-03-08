@@ -1,6 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
-import { AwsCodepipelineStack } from '../lib/aws-codepipeline-stack';
-import { MyPipelineStack } from '../AWSCodePipeline/lib/aws-codepipeline-stack';
+import { MyPipelineStack } from '../lib/aws-codepipeline-stack';
 
 const app = new cdk.App();
 new MyPipelineStack(app, 'AwsCodepipelineStack', {
