@@ -5,6 +5,7 @@ import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
+import { CfnParameter } from 'aws-cdk-lib';
 
 interface MyPipelineStackProps extends cdk.StackProps {
   pipelineName: string;
@@ -30,6 +31,43 @@ export class MyPipelineStack extends cdk.Stack {
       props.githubSecretName
     );
 
+    // Declare the parameters in the CDK stack
+    const pipelineName = new CfnParameter(this, 'PipelineName', {
+      type: 'String',
+      description: 'The name of the pipeline',
+      default: 'MyAppPipeline',  // You can also use `props.pipelineName` if it's passed
+    });
+
+    const sourceStageName = new CfnParameter(this, 'SourceStageName', {
+      type: 'String',
+      description: 'The name of the source stage',
+      default: 'Source',
+    });
+
+    const buildStageName = new CfnParameter(this, 'BuildStageName', {
+      type: 'String',
+      description: 'The name of the build stage',
+      default: 'Build',
+    });
+
+    const deployStageName = new CfnParameter(this, 'DeployStageName', {
+      type: 'String',
+      description: 'The name of the deploy stage',
+      default: 'Deploy',
+    });
+
+    const buildProjectName = new CfnParameter(this, 'BuildProjectName', {
+      type: 'String',
+      description: 'The name of the build project',
+      default: 'MyBuildProject',
+    });
+
+    const deployRoleName = new CfnParameter(this, 'DeployRoleName', {
+      type: 'String',
+      description: 'The name of the deploy role',
+      default: 'MyDeployRole',
+    });
+
     // Define the source stage (GitHub)
     const sourceOutput = new codepipeline.Artifact();
 
@@ -45,7 +83,7 @@ export class MyPipelineStack extends cdk.Stack {
 
     // Define the build project (CodeBuild)
     const buildProject = new codebuild.Project(this, 'BuildProject', {
-      projectName: props.buildProjectName,
+      projectName: buildProjectName.valueAsString,
       buildSpec: codebuild.BuildSpec.fromObject({
         version: '0.2',
         phases: {
@@ -69,7 +107,7 @@ export class MyPipelineStack extends cdk.Stack {
     // Create a single IAM role with AdministratorAccess attached
     const deployRole = new iam.Role(this, 'DeployRole', {
       assumedBy: new iam.ServicePrincipal('codepipeline.amazonaws.com'),
-      roleName: props.deployRoleName,
+      roleName: deployRoleName.valueAsString,
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName('AdministratorAccess'), // Attach AdministratorAccess policy
       ],
@@ -82,19 +120,19 @@ export class MyPipelineStack extends cdk.Stack {
 
     // Create the pipeline
     new codepipeline.Pipeline(this, 'MyPipeline', {
-      pipelineName: props.pipelineName,
+      pipelineName: pipelineName.valueAsString,
       role: deployRole, // Assign the created deploy role to the pipeline
       stages: [
         {
-          stageName: props.sourceStageName,
+          stageName: sourceStageName.valueAsString,
           actions: [sourceAction],
         },
         {
-          stageName: props.buildStageName,
+          stageName: buildStageName.valueAsString,
           actions: [buildAction],
         },
         {
-          stageName: props.deployStageName,
+          stageName: deployStageName.valueAsString,
           actions: [deployAction],
         },
       ],
