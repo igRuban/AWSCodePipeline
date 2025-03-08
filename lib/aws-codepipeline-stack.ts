@@ -1,66 +1,103 @@
 import * as cdk from 'aws-cdk-lib';
+import { Construct } from 'constructs';
 import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
-import * as codebuild from 'aws-cdk-lib/aws-codebuild';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 
-export class CodePipelineStack extends cdk.Stack {
-    constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {
-        super(scope, id, props);
+interface MyPipelineStackProps extends cdk.StackProps {
+  pipelineName: string;
+  sourceStageName: string;
+  buildStageName: string;
+  deployStageName: string;
+  buildProjectName: string;
+  deployRoleName: string;
+  githubOwner: string;
+  githubRepo: string;
+  githubBranch: string;
+  githubSecretName: string;
+}
 
-        // Fetch GitHub Token from AWS Secrets Manager
-        const githubToken = secretsmanager.Secret.fromSecretNameV2(this, 'GitHubToken', 'last-time');
+export class MyPipelineStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: MyPipelineStackProps) {
+    super(scope, id, props);
 
-        // Define Artifacts
-        const sourceArtifact = new codepipeline.Artifact();
-        const buildArtifact = new codepipeline.Artifact();
+    // Fetch GitHub OAuth token from Secrets Manager
+    const githubOAuthToken = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      'GitHubOAuthToken',
+      props.githubSecretName
+    );
 
-        // CodeBuild Project
-        const buildProject = new codebuild.PipelineProject(this, 'BuildProject');
+    // Define the source stage (GitHub)
+    const sourceOutput = new codepipeline.Artifact();
 
-        // Define CodePipeline
-        const pipeline = new codepipeline.Pipeline(this, 'MyFirstPipeline');
+    const sourceAction = new codepipeline_actions.GitHubSourceAction({
+      actionName: 'GitHub_Source',
+      owner: props.githubOwner,
+      repo: props.githubRepo,
+      branch: props.githubBranch,
+      oauthToken: githubOAuthToken.secretValue,
+      output: sourceOutput,
+      trigger: codepipeline_actions.GitHubTrigger.NONE, // Skip webhook registration to avoid errors
+    });
 
-        // Source Stage (GitHub without Webhook)
-        const sourceStage = pipeline.addStage({ stageName: 'Source' });
+    // Define the build project (CodeBuild)
+    const buildProject = new codebuild.Project(this, 'BuildProject', {
+      projectName: props.buildProjectName,
+      buildSpec: codebuild.BuildSpec.fromObject({
+        version: '0.2',
+        phases: {
+          build: {
+            commands: [
+              'echo Building the project...',
+              // Your build commands here
+            ],
+          },
+        },
+      }),
+    });
 
-        // First Action: GitHub Source
-        sourceStage.addAction(new codepipeline_actions.GitHubSourceAction({
-            actionName: 'CheckOut',
-            owner: 'igRuban', // Your GitHub username
-            repo: 'AWSCodePipeline', // Your GitHub repo name
-            branch: 'master',
-            oauthToken: githubToken.secretValue, // Use GitHub token from Secrets Manager
-            output: sourceArtifact,
-            trigger: codepipeline_actions.GitHubTrigger.NONE, // Disables Webhook
-        }));
+    // Define the build stage
+    const buildAction = new codepipeline_actions.CodeBuildAction({
+      actionName: 'Build',
+      project: buildProject,
+      input: sourceOutput,
+    });
 
-        // Second Action: Another GitHub Source (or any other source)
-        sourceStage.addAction(new codepipeline_actions.GitHubSourceAction({
-            actionName: 'Compile',
-            owner: 'anotherOwner', // Another GitHub username (or different repo)
-            repo: 'AnotherRepo', // Another GitHub repo name
-            branch: 'main',
-            oauthToken: githubToken.secretValue, // Use GitHub token from Secrets Manager
-            output: new codepipeline.Artifact('secondarySourceArtifact'),
-            trigger: codepipeline_actions.GitHubTrigger.NONE, // Disables Webhook
-        }));
+    // Create a single IAM role with AdministratorAccess attached
+    const deployRole = new iam.Role(this, 'DeployRole', {
+      assumedBy: new iam.ServicePrincipal('codepipeline.amazonaws.com'),
+      roleName: props.deployRoleName,
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('AdministratorAccess'), // Attach AdministratorAccess policy
+      ],
+    });
 
-        // Build Stage (CodeBuild)
-        const buildStage = pipeline.addStage({ stageName: 'Build' });
-        buildStage.addAction(new codepipeline_actions.CodeBuildAction({
-            actionName: 'CodeBuild',
-            project: buildProject,
-            input: sourceArtifact,
-            outputs: [buildArtifact],
-        }));
+    // Define the deploy stage (could be any service, e.g., Lambda, ECS, etc.)
+    const deployAction = new codepipeline_actions.ManualApprovalAction({
+      actionName: 'Deploy',
+    });
 
-        // Deploy Stage
-        const deployStage = pipeline.addStage({ stageName: 'Deploy' });
-        deployStage.addAction(new codepipeline_actions.CodeBuildAction({
-            actionName: 'CodeBuild_Deploy',
-            project: buildProject, // You can replace this with a separate CodeBuild project for deployment
-            input: buildArtifact,
-        }));
-    }
+    // Create the pipeline
+    new codepipeline.Pipeline(this, 'MyPipeline', {
+      pipelineName: props.pipelineName,
+      role: deployRole, // Assign the created deploy role to the pipeline
+      stages: [
+        {
+          stageName: props.sourceStageName,
+          actions: [sourceAction],
+        },
+        {
+          stageName: props.buildStageName,
+          actions: [buildAction],
+        },
+        {
+          stageName: props.deployStageName,
+          actions: [deployAction],
+        },
+      ],
+    });
+  }
 }

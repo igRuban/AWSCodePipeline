@@ -83,6 +83,20 @@
     "@aws-cdk/aws-elasticloadbalancingV2:albDualstackWithoutPublicIpv4SecurityGroupRulesDefault": true,
     "@aws-cdk/aws-iam:oidcRejectUnauthorizedConnections": true,
     "@aws-cdk/core:enableAdditionalMetadataCollection": true,
-    "@aws-cdk/aws-lambda:createNewPoliciesWithAddToRolePolicy": true
+    "@aws-cdk/aws-lambda:createNewPoliciesWithAddToRolePolicy": true,
+    "pipelineName": "MyAppPipeline",         
+  "sourceStageName": "Source",            
+  "buildStageName": "Build",            
+  "deployStageName": "Deploy",            
+  "buildProjectName": "MyBuildProject",   
+  "deployRoleName": "MyDeployRole",       
+  "githubOwner": "igRuban",     
+  "githubRepo": "AWSCodePipeline",     
+  "githubBranch": "main",                 
+  "githubSecretName": "last-time",
+  "app": "npx ts-node bin/aws-copdepipeline.ts"
+
+  
+  
   }
 }
