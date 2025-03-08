@@ -11,7 +11,7 @@ new MyPipelineStack(app, 'AwsCodepipelineStack', {
   deployRoleName: 'MyDeployRole',        // Name of the deployment role
   githubOwner: 'igRuban',                // GitHub owner (your username or organization)
   githubRepo: 'AWSCodePipeline',         // GitHub repository name
-  githubBranch: 'main',                  // GitHub branch name
+  githubBranch: 'master',                  // GitHub branch name
   githubSecretName: 'last-time',         // The name of the secret in Secrets Manager containing your GitHub OAuth token
   env: { region: 'us-east-1' }           // AWS region
 });

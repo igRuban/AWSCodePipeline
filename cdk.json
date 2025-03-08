@@ -92,7 +92,7 @@
   "deployRoleName": "MyDeployRole",       
   "githubOwner": "igRuban",     
   "githubRepo": "AWSCodePipeline",     
-  "githubBranch": "main",                 
+  "githubBranch": "master",                 
   "githubSecretName": "last-time"
   
 
