@@ -93,8 +93,8 @@
   "githubOwner": "igRuban",     
   "githubRepo": "AWSCodePipeline",     
   "githubBranch": "main",                 
-  "githubSecretName": "last-time",
-  "app": "npx ts-node bin/aws-copdepipeline.ts"
+  "githubSecretName": "last-time"
+  
 
   
   
