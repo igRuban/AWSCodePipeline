@@ -48,7 +48,7 @@ deploy_cdk_stack() {
 # Define variables
 GIT_REPO_URL="https://github.com/igRuban/AWSCodePipeline.git"  # Replace with your actual repo URL
 CDK_APP_DIR="AWSCodePipeline"  # Change if needed
-STACK_NAME="MyPipelineStack"  # Replace with your actual stack name
+STACK_NAME="AwsCodepipelineStack"  # Replace with your actual stack name
 AWS_PROFILE="default"  # Change if using a different AWS profile
 
 # Pipeline Parameters
