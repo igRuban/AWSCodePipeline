@@ -2,40 +2,21 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
-import * as iam from 'aws-cdk-lib/aws-iam';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as codedeploy from 'aws-cdk-lib/aws-codedeploy';
 import { CfnParameter } from 'aws-cdk-lib';
 
-interface MyPipelineStackProps extends cdk.StackProps {
-  pipelineName: string;
-  sourceStageName: string;
-  buildStageName: string;
-  deployStageName: string;
-  buildProjectName: string;
-  deployRoleName: string;
-  githubOwner: string;
-  githubRepo: string;
-  githubBranch: string;
-  githubSecretName: string;
-}
-
-export class MyPipelineStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: MyPipelineStackProps) {
+export class AwsCodepipelineStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Fetch GitHub OAuth token from Secrets Manager
-    const githubOAuthToken = secretsmanager.Secret.fromSecretNameV2(
-      this,
-      'GitHubOAuthToken',
-      props.githubSecretName
-    );
-
-    // Declare the parameters in the CDK stack
+    // Declare Parameters
     const pipelineName = new CfnParameter(this, 'PipelineName', {
       type: 'String',
       description: 'The name of the pipeline',
-      default: 'MyAppPipeline',  // You can also use `props.pipelineName` if it's passed
+      default: 'MyAppPipeline',
     });
 
     const sourceStageName = new CfnParameter(this, 'SourceStageName', {
@@ -68,74 +49,106 @@ export class MyPipelineStack extends cdk.Stack {
       default: 'MyDeployRole',
     });
 
-    // Define the source stage (GitHub)
-    const sourceOutput = new codepipeline.Artifact();
-
-    const sourceAction = new codepipeline_actions.GitHubSourceAction({
-      actionName: 'GitHub_Source',
-      owner: props.githubOwner,
-      repo: props.githubRepo,
-      branch: props.githubBranch,
-      oauthToken: githubOAuthToken.secretValue,
-      output: sourceOutput,
-      trigger: codepipeline_actions.GitHubTrigger.NONE, // Skip webhook registration to avoid errors
+    // Create S3 Bucket to store source files
+    const sourceBucket = new s3.Bucket(this, 'SourceBucket', {
+      removalPolicy: cdk.RemovalPolicy.DESTROY, // Only for dev/test environments
     });
 
-    // Define the build project (CodeBuild)
+    // Create CodeBuild Project for the build stage
     const buildProject = new codebuild.Project(this, 'BuildProject', {
-      projectName: buildProjectName.valueAsString,
+      projectName: buildProjectName.valueAsString, // Use resolved value
       buildSpec: codebuild.BuildSpec.fromObject({
         version: '0.2',
         phases: {
           build: {
             commands: [
               'echo Building the project...',
-              // Your build commands here
+              'npm install',
+              'npm run build',
             ],
           },
+        },
+        artifacts: {
+          'base-directory': 'build', // Adjust to where your build outputs go
+          files: '**/*',
         },
       }),
     });
 
-    // Define the build stage
+    // Create IAM Role for deploy stage
+    const deployRole = new iam.Role(this, 'DeployRole', {
+      assumedBy: new iam.ServicePrincipal('codepipeline.amazonaws.com'),
+      roleName: deployRoleName.valueAsString, // Use resolved value
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('AdministratorAccess'),
+      ],
+    });
+
+    // Create CodePipeline
+    const pipeline = new codepipeline.Pipeline(this, 'Pipeline', {
+      pipelineName: pipelineName.valueAsString, // Use resolved value
+    });
+
+    // Add Source Stage to Pipeline
+    const sourceOutput = new codepipeline.Artifact();
+    const sourceAction = new codepipeline_actions.S3SourceAction({
+      actionName: 'Source',
+      bucket: sourceBucket,
+      bucketKey: 'source.zip', // Adjust as per your source code structure
+      output: sourceOutput,
+    });
+
+    // Add Build Stage to Pipeline
+    const buildOutput = new codepipeline.Artifact();
     const buildAction = new codepipeline_actions.CodeBuildAction({
       actionName: 'Build',
       project: buildProject,
       input: sourceOutput,
+      outputs: [buildOutput],
     });
 
-    // Create a single IAM role with AdministratorAccess attached
-    const deployRole = new iam.Role(this, 'DeployRole', {
-      assumedBy: new iam.ServicePrincipal('codepipeline.amazonaws.com'),
-      roleName: deployRoleName.valueAsString,
-      managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('AdministratorAccess'), // Attach AdministratorAccess policy
-      ],
+    // Create CodeDeploy Application and Deployment Group for the deploy stage
+    const codedeployApp = new codedeploy.ServerApplication(this, 'MyCodeDeployApp', {
+      applicationName: 'MyApplication',
     });
 
-    // Define the deploy stage (could be any service, e.g., Lambda, ECS, etc.)
-    const deployAction = new codepipeline_actions.ManualApprovalAction({
+    const deploymentGroup = new codedeploy.ServerDeploymentGroup(this, 'MyDeploymentGroup', {
+      deploymentGroupName: 'MyDeploymentGroupName',
+      application: codedeployApp,
+      deploymentConfig: codedeploy.ServerDeploymentConfig.ALL_AT_ONCE, // Choose the deployment strategy you need
+      autoRollback: {
+        failedDeployment: true,
+      },
+    });
+
+    // Add Deploy Stage to Pipeline
+    const deployAction = new codepipeline_actions.CodeDeployServerDeployAction({
       actionName: 'Deploy',
+      input: buildOutput,
+      deploymentGroup: deploymentGroup, // Reference to the deployment group
+      role: deployRole,
     });
 
-    // Create the pipeline
-    new codepipeline.Pipeline(this, 'MyPipeline', {
-      pipelineName: pipelineName.valueAsString,
-      role: deployRole, // Assign the created deploy role to the pipeline
-      stages: [
-        {
-          stageName: sourceStageName.valueAsString,
-          actions: [sourceAction],
-        },
-        {
-          stageName: buildStageName.valueAsString,
-          actions: [buildAction],
-        },
-        {
-          stageName: deployStageName.valueAsString,
-          actions: [deployAction],
-        },
-      ],
+    // Add stages to the pipeline
+    pipeline.addStage({
+      stageName: sourceStageName.valueAsString, // Use resolved value
+      actions: [sourceAction],
+    });
+
+    pipeline.addStage({
+      stageName: buildStageName.valueAsString, // Use resolved value
+      actions: [buildAction],
+    });
+
+    pipeline.addStage({
+      stageName: deployStageName.valueAsString, // Use resolved value
+      actions: [deployAction],
+    });
+
+    // Outputs
+    new cdk.CfnOutput(this, 'PipelineNameOutput', {
+      value: pipeline.pipelineName,
+      description: 'The name of the pipeline',
     });
   }
 }
